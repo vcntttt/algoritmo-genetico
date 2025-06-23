@@ -1,0 +1,2 @@
+quorum_req,tamano_poblacion,cant_generaciones,prob_seleccion,prob_mutacion,cant_participantes_torneo,tiempo_total_ejec_algoritmo,mejor_fitness
+216,38,10000,0.141,0.1700019,5,180.81376552581787,9688.149175318164
