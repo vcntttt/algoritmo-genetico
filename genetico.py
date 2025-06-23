@@ -130,10 +130,10 @@ def genetic_algorithm(
         new_pop = []
         while len(new_pop) < pop_size:
             p1 = tournament_selection(
-                population, costs.tolist(), len(population)
+                population, costs.tolist(), tournament_k 
             )  # aca deberia ir tournament_k por len(population)
             p2 = tournament_selection(
-                population, costs.tolist(), len(population)
+                population, costs.tolist(), tournament_k
             )  # aca igual
             if random.random() < cx_prob:
                 c1, c2 = crossover(p1, p2, q)
@@ -211,7 +211,7 @@ def main():
     parser.add_argument("--quorum", type=int, default=216, help="Coalition size")
     parser.add_argument("--popsize", type=int, default=38, help="Population size")
     parser.add_argument("--gens", type=int, required=True, help="Number of generations")
-    parser.add_argument("--cx", type=float, default=0.8, help="Crossover probability")
+    parser.add_argument("--cx", type=float, default=0.141, help="Crossover probability")
     parser.add_argument(
         "--mut", type=float, default=0.1700019, help="Mutation probability"
     )
