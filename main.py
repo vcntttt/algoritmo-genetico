@@ -70,13 +70,15 @@ def poblacion_inicial(congresistas, quorum_requerido, size_poblacion):
     ]
 
 
-def torneo_de_seleccion(
-    poblacion, distancias_fitness_poblacion, cantidad_participantes
-):
-    indices_participantes = random.sample(range(len(poblacion)), cantidad_participantes)
-    return poblacion[
-        min(indices_participantes, key=lambda i: distancias_fitness_poblacion[i])
-    ].copy()
+def torneo_de_seleccion(poblacion, distancias_fitness_poblacion, p):
+    indices_ordenados = sorted(range(len(poblacion)), key=lambda i: distancias_fitness_poblacion[i])
+    n = len(poblacion)
+    probabilidades = [p * ((1 - p) ** i) for i in range(n)]
+    suma = sum(probabilidades)
+    probabilidades = [pi / suma for pi in probabilidades]
+    elegido = random.choices(indices_ordenados, weights=probabilidades, k=1)[0]
+    return poblacion[elegido].copy()
+
 
 
 def cruce_genetico(padre, madre, largo_cromosoma):
@@ -110,9 +112,8 @@ def algoritmo_genetico(
     quorum_requerido,
     size_poblacion,
     cantidad_generaciones,
-    probabilidad_de_seleccion,
     probabilidad_de_mutacion,
-    cantidad_participantes_torneo,
+    probabilidad_de_seleccion
 ):
     cantidad_congresistas = coordenadas_congresistas.shape[0]
     matriz_distancias_congresistas = matriz_de_distancias(coordenadas_congresistas)
@@ -173,12 +174,9 @@ def algoritmo_genetico(
         distancias_lista = distancias_individuos.tolist()
         nueva_poblacion = []
         while len(nueva_poblacion) < size_poblacion:
-            padre = torneo_de_seleccion(
-                poblacion, distancias_lista, cantidad_participantes_torneo
-            )
-            madre = torneo_de_seleccion(
-                poblacion, distancias_lista, cantidad_participantes_torneo
-            )
+            padre = torneo_de_seleccion(poblacion, distancias_lista, p=probabilidad_de_seleccion)
+            madre = torneo_de_seleccion(poblacion, distancias_lista, p=probabilidad_de_seleccion)
+
             if random.random() < probabilidad_de_seleccion:
                 individuo_1, individuo_2 = cruce_genetico(
                     padre, madre, quorum_requerido
@@ -294,16 +292,10 @@ def main():
         "--generaciones", type=int, default=100, help="Cantidad de generaciones"
     )
     parser.add_argument(
-        "--p_seleccion", type=float, default=0.141, help="Probabilidad de selección"
-    )
-    parser.add_argument(
         "--p_mutacion", type=float, default=0.1700019, help="Probabilidad de mutación"
     )
     parser.add_argument(
-        "--c_torneo",
-        type=int,
-        default=5,
-        help="Cantidad de participantes en torneo de selección",
+        "--p_seleccion", type=float, default=0.141, help="Probabilidad de selección"
     )
     parser.add_argument(
         "--sin_graficos", action="store_true", help="Omitir la generación de gráficos"
@@ -337,22 +329,14 @@ def main():
     if args.size_poblacion <= 0:
         parser.error("El tamaño de población debe ser positiva.")
 
-    if args.c_torneo <= 1:
-        parser.error("La cantidad de participantes del torneo debe ser mayor que 1.")
-
-    if args.c_torneo > args.size_poblacion:
-        parser.error(
-            "La cantidad de participantes del torneo no puede ser mayor que el tamaño de la población."
-        )
-
     if args.generaciones <= 0:
         parser.error("La cantidad de generaciones debe ser positiva.")
 
-    if not (0 < args.p_seleccion < 1):
-        parser.error("La probabilidad de selección debe estar entre 0 y 1.")
-
     if not (0 < args.p_mutacion < 1):
         parser.error("La probabilidad de mutación debe estar entre 0 y 1.")
+
+    if not (0 < args.p_seleccion < 1):
+        parser.error("La probabilidad de selección debe estar entre 0 y 1.")
 
     cgm, fitness_cgm, historial_distancias, tiempos_generacion, tiempo_total_alg = (
         algoritmo_genetico(
@@ -360,9 +344,9 @@ def main():
             quorum_requerido=args.quorum,
             size_poblacion=args.size_poblacion,
             cantidad_generaciones=args.generaciones,
-            probabilidad_de_seleccion=args.p_seleccion,
             probabilidad_de_mutacion=args.p_mutacion,
-            cantidad_participantes_torneo=args.c_torneo,
+            probabilidad_de_seleccion=args.p_seleccion
+
         )
     )
 
@@ -376,9 +360,8 @@ def main():
         "quorum_req": args.quorum,
         "size_poblacion": args.size_poblacion,
         "cant_generaciones": args.generaciones,
-        "prob_seleccion": args.p_seleccion,
         "prob_mutacion": args.p_mutacion,
-        "cant_participantes_torneo": args.c_torneo,
+        "prob_seleccion": args.p_seleccion,
         "tiempo_total_ejec_algoritmo": f"{tiempo_total_alg:.4f}",
         "mejor_fitness": f"{fitness_cgm:.8f}",
     }
