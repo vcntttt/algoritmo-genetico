@@ -59,14 +59,14 @@ def matriz_de_distancias(coordenadas):
     return cp.linalg.norm(diferencias_punto_a_punto, axis=2)
 
 
-def poblacion_inicial(congresistas, quorum_requerido, tamano_poblacion):
+def poblacion_inicial(congresistas, quorum_requerido, size_poblacion):
     if quorum_requerido > congresistas:
         raise ValueError(
             "El quorum no puede ser mayor al número total de congresistas."
         )
     return [
         random.sample(range(congresistas), quorum_requerido)
-        for _ in range(tamano_poblacion)
+        for _ in range(size_poblacion)
     ]
 
 
@@ -108,7 +108,7 @@ def mutacion(individuo, genes_disponibles):
 def algoritmo_genetico(
     coordenadas_congresistas,
     quorum_requerido,
-    tamano_poblacion,
+    size_poblacion,
     cantidad_generaciones,
     probabilidad_de_seleccion,
     probabilidad_de_mutacion,
@@ -117,7 +117,7 @@ def algoritmo_genetico(
     cantidad_congresistas = coordenadas_congresistas.shape[0]
     matriz_distancias_congresistas = matriz_de_distancias(coordenadas_congresistas)
     poblacion = poblacion_inicial(
-        cantidad_congresistas, quorum_requerido, tamano_poblacion
+        cantidad_congresistas, quorum_requerido, size_poblacion
     )
     poblacion_gpu = cp.asarray(poblacion, dtype=cp.int32)
 
@@ -170,15 +170,9 @@ def algoritmo_genetico(
             distancia_coalicion_ganadora_minima = mejor_distancia_generacion
             coalicion_ganadora_minima = poblacion[mejor_indice].copy()
 
-        if generacion % 10 == 0 or generacion in (1, cantidad_generaciones):
-            print(
-                f"  >> Mejor fitness hasta ahora: {distancia_coalicion_ganadora_minima:.6f}",
-                flush=True,
-            )
-
         distancias_lista = distancias_individuos.tolist()
         nueva_poblacion = []
-        while len(nueva_poblacion) < tamano_poblacion:
+        while len(nueva_poblacion) < size_poblacion:
             padre = torneo_de_seleccion(
                 poblacion, distancias_lista, cantidad_participantes_torneo
             )
@@ -196,7 +190,7 @@ def algoritmo_genetico(
             if random.random() < probabilidad_de_mutacion:
                 individuo_2 = mutacion(individuo_2, cantidad_congresistas)
             nueva_poblacion.extend([individuo_1, individuo_2])
-        poblacion = nueva_poblacion[:tamano_poblacion]
+        poblacion = nueva_poblacion[:size_poblacion]
         poblacion_gpu = cp.asarray(poblacion, dtype=cp.int32)
 
     total_tiempo_algoritmo = time.time() - tiempo_inicio_algoritmo
@@ -294,7 +288,7 @@ def main():
         help="Tamaño requerido de la coalición (quorum requerido)",
     )
     parser.add_argument(
-        "--tamano_poblacion", type=int, default=38, help="Tamaño de la población"
+        "--size_poblacion", type=int, default=38, help="Tamaño de la población"
     )
     parser.add_argument(
         "--generaciones", type=int, default=100, help="Cantidad de generaciones"
@@ -335,18 +329,18 @@ def main():
     if args.quorum <= 0:
         parser.error("El quorum requerido debe ser positivo.")
 
-    if args.tamano_poblacion > len(coordenadas):
+    if args.size_poblacion > len(coordenadas):
         parser.error(
             "El tamaño de la población no puede ser mayor que la cantidad de congresistas."
         )
 
-    if args.tamano_poblacion <= 0:
+    if args.size_poblacion <= 0:
         parser.error("El tamaño de población debe ser positiva.")
 
     if args.c_torneo <= 1:
         parser.error("La cantidad de participantes del torneo debe ser mayor que 1.")
 
-    if args.c_torneo > args.tamano_poblacion:
+    if args.c_torneo > args.size_poblacion:
         parser.error(
             "La cantidad de participantes del torneo no puede ser mayor que el tamaño de la población."
         )
@@ -364,7 +358,7 @@ def main():
         algoritmo_genetico(
             coordenadas,
             quorum_requerido=args.quorum,
-            tamano_poblacion=args.tamano_poblacion,
+            size_poblacion=args.size_poblacion,
             cantidad_generaciones=args.generaciones,
             probabilidad_de_seleccion=args.p_seleccion,
             probabilidad_de_mutacion=args.p_mutacion,
@@ -380,7 +374,7 @@ def main():
     resumen = {
         "id": timestamp,
         "quorum_req": args.quorum,
-        "tamano_poblacion": args.tamano_poblacion,
+        "size_poblacion": args.size_poblacion,
         "cant_generaciones": args.generaciones,
         "prob_seleccion": args.p_seleccion,
         "prob_mutacion": args.p_mutacion,
@@ -398,25 +392,23 @@ def main():
     # guardar resultados específicos
     os.makedirs("cgm", exist_ok=True)
     os.makedirs(f"cgm/{timestamp}", exist_ok=True)
-    nombres_coalicion = df.loc[cgm, "name"].tolist()
 
-    with open(
-        f"cgm/{timestamp}/nombres_congresistas_coalicion_{timestamp}.txt",
-        "w",
+    coalicion_df = df.loc[cgm, ["name", "partido", "x", "y"]]
+    coalicion_df.to_csv(
+        f"cgm/{timestamp}/congresistas_coalicion.csv",
+        index=False,
         encoding="utf-8",
-    ) as f:
-        for nombre in nombres_coalicion:
-            f.write(nombre + "\n")
+    )
 
     graficar_resultados(
         coordenadas,
         partidos,
         cgm,
         titulo=f"CGM encontrada (quorum={args.quorum}, best_fitness={fitness_cgm:.4f})",
-        salida=f"cgm/{timestamp}/poligono_convexo_{timestamp}",
+        salida=f"cgm/{timestamp}/poligono_convexo",
     )
     graficar_historial_costos(
-        historial_distancias, salida=f"cgm/{timestamp}/mejores_fitness_{timestamp}"
+        historial_distancias, salida=f"cgm/{timestamp}/mejores_fitness"
     )
 
 
