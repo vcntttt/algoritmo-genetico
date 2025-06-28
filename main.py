@@ -177,12 +177,9 @@ def algoritmo_genetico(
             padre = torneo_de_seleccion(poblacion, distancias_lista, p=probabilidad_de_seleccion)
             madre = torneo_de_seleccion(poblacion, distancias_lista, p=probabilidad_de_seleccion)
 
-            if random.random() < probabilidad_de_seleccion:
-                individuo_1, individuo_2 = cruce_genetico(
-                    padre, madre, quorum_requerido
-                )
-            else:
-                individuo_1, individuo_2 = padre, madre
+            individuo_1, individuo_2 = cruce_genetico(
+                padre, madre, quorum_requerido
+            )
             if random.random() < probabilidad_de_mutacion:
                 individuo_1 = mutacion(individuo_1, cantidad_congresistas)
             if random.random() < probabilidad_de_mutacion:
