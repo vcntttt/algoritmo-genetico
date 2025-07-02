@@ -82,7 +82,7 @@ def algoritmo_genetico(coords, q, pop_size, gens, p_mut, p_sel):
     t_start = time.time()
 
     for gen in range(1, gens + 1):
-        # --- GPU: calcular fitness ---
+        # GPU: calcular fitness
         pop_gpu = cp.asarray(pop, dtype=cp.int32)
         sub = D_gpu[pop_gpu[:, :, None], pop_gpu[:, None, :]]
         fit_gpu = cp.sum(cp.triu(sub, 1), axis=(1, 2))
@@ -106,7 +106,7 @@ def algoritmo_genetico(coords, q, pop_size, gens, p_mut, p_sel):
             print(f">> Óptimo encontrado en {gen} generaciones.", flush=True)
             break
 
-        # --- CPU: elitismo ---
+        # CPU: elitismo
         new_pop = [current_best]
 
         # generar nuevos individuos
