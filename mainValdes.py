@@ -129,25 +129,37 @@ def poblacion_inicial(n_congresistas, quorum, size_pob):
         raise ValueError("El quorum no puede ser mayor al número total de congresistas.")
     return [random.sample(range(n_congresistas), quorum) for _ in range(size_pob)]
 
-def torneo_de_seleccion(poblacion, fitness, p):
-    idx_ordenados = sorted(range(len(poblacion)), key=lambda i: fitness[i])
-    n = len(poblacion)
-    probs = [p * ((1 - p) ** i) for i in range(n)]
-    total = sum(probs)
-    probs = [pi / total for pi in probs]
-    elegido = random.choices(idx_ordenados, weights=probs, k=1)[0]
-    return poblacion[elegido].copy()
+def torneo_de_seleccion(fitness, p):
+    n = fitness.shape[0]
+    orden = cp.argsort(fitness)
+    probs = cp.asarray([p * (1 - p) ** i for i in range(n)])
+    probs /= cp.sum(probs)
+    dist_acum = cp.cumsum(probs)
+    r = cp.random.rand()
+    elegido = cp.searchsorted(dist_acum, r)
+    return orden[elegido]
 
-def cruce_genetico(padre, madre, largo):
-    punto = largo // 2
-    hijo1 = padre[:punto] + [g for g in madre if g not in padre[:punto]][:largo - punto]
-    hijo2 = madre[:largo - punto] + [g for g in padre if g not in madre[:largo - punto]][:punto]
+def cruce_genetico(padre, madre):
+    largo = padre.shape[0]
+    punto = cp.random.randint(1, largo)
+    hijo1 = cp.concatenate([
+        padre[:punto],
+        cp.setdiff1d(madre, padre[:punto], assume_unique=True)
+    ])[:largo]
+    hijo2 = cp.concatenate([
+        madre[:largo - punto],
+        cp.setdiff1d(padre, madre[:largo - punto], assume_unique=True)
+    ])[:largo]
     return hijo1, hijo2
 
-def mutacion(individuo, total_genes):
-    genes_fuera = list(set(range(total_genes)) - set(individuo))
-    if genes_fuera:
-        individuo[random.randrange(len(individuo))] = random.choice(genes_fuera)
+def mutacion(individuo, n_genes):
+    todos = cp.arange(n_genes)
+    fuera = cp.setdiff1d(todos, individuo, assume_unique=True)
+    if fuera.size == 0:
+        return individuo
+    i = cp.random.randint(0, individuo.shape[0])
+    nuevo = fuera[cp.random.randint(0, fuera.size)]
+    individuo[i] = nuevo
     return individuo
 
 def evaluar_fitness(poblacion_gpu, matriz_distancias, usando_cupy):
@@ -165,8 +177,10 @@ def algoritmo_genetico(
 ):
     n_congresistas = coordenadas.shape[0]
     matriz_dist = matriz_de_distancias(coordenadas)
-    poblacion = poblacion_inicial(n_congresistas, quorum, size_poblacion)
-    poblacion_gpu = cp.asarray(poblacion, dtype=cp.int32)
+    poblacion_gpu = cp.asarray(
+        [random.sample(range(n_congresistas), quorum) for _ in range(size_poblacion)],
+        dtype=cp.int32
+    )
 
     mejor_coalicion, mejor_fitness = None, float("inf")
     historial_fitness, tiempos_generacion = [], []
@@ -185,21 +199,23 @@ def algoritmo_genetico(
 
         if best_fitness < mejor_fitness:
             mejor_fitness = best_fitness
-            mejor_coalicion = poblacion[idx_best].copy()
+            mejor_coalicion = poblacion_gpu[idx_best].get().tolist()
 
-        dist_list = fitness.tolist()
         nueva_poblacion = []
-        while len(nueva_poblacion) < size_poblacion:
-            padre = torneo_de_seleccion(poblacion, dist_list, p_seleccion)
-            madre = torneo_de_seleccion(poblacion, dist_list, p_seleccion)
-            hijo1, hijo2 = cruce_genetico(padre, madre, quorum)
-            if random.random() < p_mutacion:
+        for _ in range(size_poblacion // 2):
+            idx_padre = torneo_de_seleccion(cp.asarray(fitness), p_seleccion)
+            idx_madre = torneo_de_seleccion(cp.asarray(fitness), p_seleccion)
+            padre = poblacion_gpu[idx_padre]
+            madre = poblacion_gpu[idx_madre]
+            hijo1, hijo2 = cruce_genetico(padre, madre)
+            if cp.random.rand() < p_mutacion:
                 hijo1 = mutacion(hijo1, n_congresistas)
-            if random.random() < p_mutacion:
+            if cp.random.rand() < p_mutacion:
                 hijo2 = mutacion(hijo2, n_congresistas)
-            nueva_poblacion.extend([hijo1, hijo2])
-        poblacion = nueva_poblacion[:size_poblacion]
-        poblacion_gpu = cp.asarray(poblacion, dtype=cp.int32)
+            nueva_poblacion.append(hijo1)
+            nueva_poblacion.append(hijo2)
+
+        poblacion_gpu = cp.stack(nueva_poblacion[:size_poblacion])
 
     total_time = time.time() - tiempo_inicio
     print(f">> Tiempo total algoritmo genético: {total_time:.2f}s", flush=True)
