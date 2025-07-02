@@ -21,21 +21,21 @@ except ImportError:
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-# -------- GPU Utilities --------
 def compute_distance_matrix(coords):
     """
-    CPU/GPU hybrid: computes full pairwise distance matrix on GPU.
-    Returns a cupy array.
+    GPU: calcula la matriz completa de distancias por pares en la GPU usando CuPy.
+    Retorna un cupy ndarray de forma (n_points, n_points).
     """
+
     coords_gpu = cp.asarray(coords)
+
     return cp.linalg.norm(coords_gpu[:, None, :] - coords_gpu[None, :, :], axis=2)
 
 
-# -------- Genetic Operators --------
 def tournament_selection(population, p_sel):
     """
-    CPU: selects two parents by weighted rank-selection (approx. tournament).
-    Returns indices of two parents.
+    CPU: selecciona dos padres por selección por ranking ponderado (aprox. torneo).
+    Retorna los índices de dos padres.
     """
     ranks = list(range(len(population)))
     weights = [p_sel * ((1 - p_sel) ** i) for i in ranks]
@@ -48,7 +48,7 @@ def tournament_selection(population, p_sel):
 
 def crossover(parent1, parent2, q):
     """
-    CPU: single-point crossover, preserves unique genes.
+    CPU: cruza de un solo punto, preserva genes únicos.
     """
     cut = random.randint(1, q - 1)
     child1 = parent1[:cut] + [g for g in parent2 if g not in parent1[:cut]][: q - cut]
@@ -60,7 +60,7 @@ def crossover(parent1, parent2, q):
 
 def mutate(individual, n, p_mut):
     """
-    CPU: with probability p_mut mutate one gene.
+    CPU: con probabilidad p_mut muta un gen.
     """
     if random.random() < p_mut:
         i = random.randrange(len(individual))
@@ -70,13 +70,13 @@ def mutate(individual, n, p_mut):
     return individual
 
 
-# -------- Main GA --------
 def algoritmo_genetico(coords, q, pop_size, gens, p_mut, p_sel):
     n = coords.shape[0]
-    D_gpu = compute_distance_matrix(coords)  # GPU: precompute distances
+    D_gpu = compute_distance_matrix(coords)  # GPU: pre-calcula distancias
 
     # CPU: inicializa población
     pop = [random.sample(range(n), q) for _ in range(pop_size)]
+
     best_global, best_fit = None, float("inf")
     history = []
     t_start = time.time()
