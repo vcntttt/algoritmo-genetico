@@ -195,7 +195,7 @@ def algoritmo_genetico(
         idx_best = int(cp.argmin(cp.asarray(fitness)))
         best_fitness = float(fitness[idx_best])
         historial_fitness.append(best_fitness)
-        print(f"Generacion {gen}/{generaciones}: tiempo {t1-t0:.6f}s, mejor fitness {best_fitness:.12f}", flush=True)
+        print(f"Generacion {gen}/{generaciones}: tiempo {t1-t0:.6f}s, mejor fitness {best_fitness:.12f}")
 
         if best_fitness < mejor_fitness:
             mejor_fitness = best_fitness
@@ -218,7 +218,7 @@ def algoritmo_genetico(
         poblacion_gpu = cp.stack(nueva_poblacion[:size_poblacion])
 
     total_time = time.time() - tiempo_inicio
-    print(f">> Tiempo total algoritmo genético: {total_time:.2f}s", flush=True)
+    print(f">> Tiempo total algoritmo genético: {total_time:.2f}s")
     return mejor_coalicion, mejor_fitness, historial_fitness, tiempos_generacion, total_time
 
 # =========================

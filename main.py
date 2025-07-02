@@ -83,7 +83,7 @@ def torneo_de_seleccion(poblacion, distancias_fitness_poblacion, p):
 
 
 def cruce_genetico(padre, madre, largo_cromosoma):
-    punto_de_cruce = largo_cromosoma // 2  # deberia ser punto aleatorio
+    punto_de_cruce = random.randint(1, largo_cromosoma - 1)
     hijo_1 = (
         padre[:punto_de_cruce]
         + [gen for gen in madre if gen not in padre[:punto_de_cruce]][
@@ -148,12 +148,6 @@ def algoritmo_genetico(
             else distancias_individuos_gpu
         )
 
-        tiempo_fin_calculo_distancias_generacion = time.time()
-        tiempo_calculo = (
-            tiempo_fin_calculo_distancias_generacion
-            - tiempo_inicio_calculo_distancias_generacion
-        )
-        tiempos_de_calculo_de_distancias_por_generacion.append(tiempo_calculo)
 
         mejor_indice = (
             cp.argmin(distancias_individuos_gpu).get()
@@ -163,17 +157,14 @@ def algoritmo_genetico(
         mejor_distancia_generacion = float(distancias_individuos[mejor_indice])
         mejores_distancias_generacionales.append(mejor_distancia_generacion)
 
-        print(
-            f"Generacion {generacion}/{cantidad_generaciones}: tiempo calculo de distancias {tiempo_calculo:.6f}s, mejor fitness {mejor_distancia_generacion:.12f}",
-            flush=True,
-        )
+    
 
         if mejor_distancia_generacion < distancia_coalicion_ganadora_minima:
             distancia_coalicion_ganadora_minima = mejor_distancia_generacion
             coalicion_ganadora_minima = poblacion[mejor_indice].copy()
 
         distancias_lista = distancias_individuos.tolist()
-        nueva_poblacion = []
+        nueva_poblacion = [coalicion_ganadora_minima]
         # agregar el mejor de poblacion anterior paso 9 -> paso 2
         while len(nueva_poblacion) < size_poblacion:
             padre = torneo_de_seleccion(
@@ -191,6 +182,17 @@ def algoritmo_genetico(
             nueva_poblacion.extend([individuo_1, individuo_2])
         poblacion = nueva_poblacion[:size_poblacion]
         poblacion_gpu = cp.asarray(poblacion, dtype=cp.int32)
+        tiempo_fin_calculo_distancias_generacion = time.time()
+        tiempo_calculo = (
+            tiempo_fin_calculo_distancias_generacion
+            - tiempo_inicio_calculo_distancias_generacion
+        )
+        tiempos_de_calculo_de_distancias_por_generacion.append(tiempo_calculo)
+        print(
+            f"Generacion {generacion}/{cantidad_generaciones}: tiempo calculo de distancias {tiempo_calculo:.6f}s, mejor fitness {mejor_distancia_generacion:.12f}"
+        )
+
+
 
     total_tiempo_algoritmo = time.time() - tiempo_inicio_algoritmo
     print(
@@ -290,7 +292,7 @@ def main():
         "--size_poblacion", type=int, default=38, help="Tamaño de la población"
     )
     parser.add_argument(
-        "--generaciones", type=int, default=100, help="Cantidad de generaciones"
+        "--generaciones", type=int, default=20000, help="Cantidad de generaciones"
     )
     parser.add_argument(
         "--p_mutacion", type=float, default=0.1700019, help="Probabilidad de mutación"
