@@ -71,7 +71,9 @@ def poblacion_inicial(congresistas, quorum_requerido, size_poblacion):
 
 
 def torneo_de_seleccion(poblacion, distancias_fitness_poblacion, p):
-    indices_ordenados = sorted(range(len(poblacion)), key=lambda i: distancias_fitness_poblacion[i])
+    indices_ordenados = sorted(
+        range(len(poblacion)), key=lambda i: distancias_fitness_poblacion[i]
+    )
     n = len(poblacion)
     probabilidades = [p * ((1 - p) ** i) for i in range(n)]
     suma = sum(probabilidades)
@@ -80,9 +82,8 @@ def torneo_de_seleccion(poblacion, distancias_fitness_poblacion, p):
     return poblacion[elegido].copy()
 
 
-
 def cruce_genetico(padre, madre, largo_cromosoma):
-    punto_de_cruce = largo_cromosoma // 2
+    punto_de_cruce = largo_cromosoma // 2  # deberia ser punto aleatorio
     hijo_1 = (
         padre[:punto_de_cruce]
         + [gen for gen in madre if gen not in padre[:punto_de_cruce]][
@@ -113,7 +114,7 @@ def algoritmo_genetico(
     size_poblacion,
     cantidad_generaciones,
     probabilidad_de_mutacion,
-    probabilidad_de_seleccion
+    probabilidad_de_seleccion,
 ):
     cantidad_congresistas = coordenadas_congresistas.shape[0]
     matriz_distancias_congresistas = matriz_de_distancias(coordenadas_congresistas)
@@ -132,11 +133,11 @@ def algoritmo_genetico(
     for generacion in range(1, cantidad_generaciones + 1):
         tiempo_inicio_calculo_distancias_generacion = time.time()
 
-        filas = poblacion_gpu[:, :, None]
+        filas = poblacion_gpu[:, :, None]  # revisar proposito de esto
         columnas = poblacion_gpu[:, None, :]
         submatriz_distancias_individuos = matriz_distancias_congresistas[
             filas, columnas
-        ]  #
+        ]
 
         distancias_individuos_gpu = cp.sum(
             cp.triu(submatriz_distancias_individuos, k=1), axis=(1, 2)
@@ -157,7 +158,7 @@ def algoritmo_genetico(
         mejor_indice = (
             cp.argmin(distancias_individuos_gpu).get()
             if usando_cupy
-            else int(cp.argmin(distancias_individuos_gpu))
+            else int(cp.argmin(distancias_individuos_gpu))  # int -> [0]
         )
         mejor_distancia_generacion = float(distancias_individuos[mejor_indice])
         mejores_distancias_generacionales.append(mejor_distancia_generacion)
@@ -173,13 +174,16 @@ def algoritmo_genetico(
 
         distancias_lista = distancias_individuos.tolist()
         nueva_poblacion = []
+        # agregar el mejor de poblacion anterior paso 9 -> paso 2
         while len(nueva_poblacion) < size_poblacion:
-            padre = torneo_de_seleccion(poblacion, distancias_lista, p=probabilidad_de_seleccion)
-            madre = torneo_de_seleccion(poblacion, distancias_lista, p=probabilidad_de_seleccion)
-
-            individuo_1, individuo_2 = cruce_genetico(
-                padre, madre, quorum_requerido
+            padre = torneo_de_seleccion(
+                poblacion, distancias_lista, p=probabilidad_de_seleccion
             )
+            madre = torneo_de_seleccion(
+                poblacion, distancias_lista, p=probabilidad_de_seleccion
+            )
+
+            individuo_1, individuo_2 = cruce_genetico(padre, madre, quorum_requerido)
             if random.random() < probabilidad_de_mutacion:
                 individuo_1 = mutacion(individuo_1, cantidad_congresistas)
             if random.random() < probabilidad_de_mutacion:
@@ -342,8 +346,7 @@ def main():
             size_poblacion=args.size_poblacion,
             cantidad_generaciones=args.generaciones,
             probabilidad_de_mutacion=args.p_mutacion,
-            probabilidad_de_seleccion=args.p_seleccion
-
+            probabilidad_de_seleccion=args.p_seleccion,
         )
     )
 
@@ -393,3 +396,8 @@ def main():
 
 
 main()
+
+
+"""
+- La probabilidad de mutacion
+"""

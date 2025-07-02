@@ -152,7 +152,7 @@ def main():
         "--size_poblacion", type=int, default=38, help="Tamaño de la población"
     )
     parser.add_argument(
-        "--generaciones", type=int, default=100, help="Cantidad de generaciones"
+        "--generaciones", type=int, default=15000, help="Cantidad de generaciones"
     )
     parser.add_argument(
         "--p_mutacion", type=float, default=0.1700019, help="Probabilidad de mutación"
