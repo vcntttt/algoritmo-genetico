@@ -11,12 +11,10 @@ import matplotlib.pyplot as plt
 try:
     import cupy as cp
 
-    usando_cupy = True
     print(">> ¡Usando CuPy (GPU) para mejorar rendimiento!", flush=True)
 except ImportError:
     import numpy as cp
 
-    usando_cupy = False
     print(">> CuPy no disponible. Usando NumPy como respaldo.", flush=True)
 
 
@@ -86,67 +84,77 @@ def mutacion(ind, n):
 
 def algoritmo_genetico(coords, q, pop_size, gens, p_mut, p_sel):
     n = coords.shape[0]
-    D = matriz_de_distancias(coords)
-    pop = poblacion_inicial(n, q, pop_size)
-    pop_gpu = cp.asarray(pop, dtype=cp.int32)
+
+    # GPU: preprocesamiento único
+    coords_gpu = cp.asarray(coords)
+    D_gpu = cp.linalg.norm(coords_gpu[:, None, :] - coords_gpu[None, :, :], axis=2)
+
+    # CPU: población inicial
+    pop = [random.sample(range(n), q) for _ in range(pop_size)]
 
     best_global, best_fit = None, float("inf")
     history, times = [], []
-    limit = 0
-    start_all = time.time()
+    t_start = time.time()
 
     for gen in range(1, gens + 1):
         t0 = time.time()
-        sub = D[pop_gpu[:, :, None], pop_gpu[:, None, :]]
+
+        # --- GPU stage: fitness ---
+        pop_gpu = cp.asarray(pop, dtype=cp.int32)
+        sub = D_gpu[pop_gpu[:, :, None], pop_gpu[:, None, :]]
         fit_gpu = cp.sum(cp.triu(sub, 1), axis=(1, 2))
-        fit_arr = fit_gpu.get() if usando_cupy else fit_gpu
+        fit_arr = fit_gpu.get()
 
-        order_idx = np.argsort(fit_arr)
-        pop = [pop[i] for i in order_idx]
-        fit_arr = fit_arr[order_idx]
+        # --- CPU stage: ordenar ---
+        idx_sorted = np.argsort(fit_arr)
+        pop = [pop[i] for i in idx_sorted]
+        fit_arr = fit_arr[idx_sorted]
 
-        current_best, current_fit = pop[0].copy(), float(fit_arr[0])
+        # extraer mejor actual
+        current_best = pop[0].copy()
+        current_fit = float(fit_arr[0])
         history.append(current_fit)
 
-        # si hay mejora global
         if current_fit < best_fit:
             best_fit = current_fit
             best_global = current_best.copy()
-            limit = 0
-            print(
-                f"Gen {gen} -> Nuevo best global: {best_fit:.2f} | t_iter: {time.time() - t0:.4f}s",
-                flush=True,
-            )
-        else:
-            limit += 1
+            print(f"> Gen {gen} → Nuevo best global: {best_fit:.6f}", flush=True)
 
-        # # si no hay mejora en cierto tiempo, detenemos (minimo llega a 10000)
-        # if limit >= 2500 and gens > 10000:
-        #     print(f"No hubo mejora en {limit} gen. Deteniendo early.", flush=True)
-        #     break
+        if best_global == 9686.93831:
+            print(f">> Optimo encontrado en {gen} generaciones.", flush=True)
+            break
 
-        # elitismo y siguiente gen
+        # --- CPU stage: nuevo relevo con elitismo ---
         new_pop = [current_best]
-        fit_list = fit_arr.tolist()
+        ranks = list(range(pop_size))
+        weights = [p_sel * ((1 - p_sel) ** i) for i in ranks]
+        s = sum(weights)
+        weights = [w / s for w in weights]
+
         while len(new_pop) < pop_size:
-            p1 = torneo_de_seleccion(pop, fit_list, p_sel)
-            p2 = torneo_de_seleccion(pop, fit_list, p_sel)
-            c1, c2 = cruce_genetico(p1, p2, q)
+            p1 = pop[random.choices(ranks, weights, k=1)[0]]
+            p2 = pop[random.choices(ranks, weights, k=1)[0]]
+            cut = random.randint(1, q - 1)
+            c1 = p1[:cut] + [g for g in p2 if g not in p1[:cut]][: q - cut]
+            c2 = p2[: q - cut] + [g for g in p1 if g not in p2[: q - cut]][:cut]
             if random.random() < p_mut:
-                c1 = mutacion(c1, n)
+                i = random.randrange(q)
+                choices = list(set(range(n)) - set(c1))
+                if choices:
+                    c1[i] = random.choice(choices)
             if random.random() < p_mut:
-                c2 = mutacion(c2, n)
+                i = random.randrange(q)
+                choices = list(set(range(n)) - set(c2))
+                if choices:
+                    c2[i] = random.choice(choices)
             new_pop.extend([c1, c2])
 
         pop = new_pop[:pop_size]
-        pop_gpu = cp.asarray(pop, dtype=cp.int32)
         times.append(time.time() - t0)
 
-    total = time.time() - start_all
-    print(
-        f"Total: {total:.2f}s | Mejor fitness: {best_fit:.2f} | Cantidad de generaciones: {gens}"
-    )
-    return best_global, best_fit, history, times, total, gens
+    total_time = time.time() - t_start
+    print(f">> Total GA: {total_time:.2f}s — Mejor fitness: {best_fit:.2f}", flush=True)
+    return best_global, best_fit, history, times, total_time, gen
 
 
 def json_a_posiciones(ruta_json, indice_votacion=0):
@@ -235,7 +243,7 @@ def main():
         "--size_poblacion", type=int, default=38, help="Tamaño de la población"
     )
     parser.add_argument(
-        "--generaciones", type=int, default=15000, help="Cantidad de generaciones"
+        "--generaciones", type=int, default=20000, help="Cantidad de generaciones"
     )
     parser.add_argument(
         "--p_mutacion", type=float, default=0.1700019, help="Probabilidad de mutación"
