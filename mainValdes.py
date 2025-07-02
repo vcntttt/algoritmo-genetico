@@ -17,7 +17,7 @@ CONFIG = {
     "default_votacion": 0,
     "default_quorum": 216,
     "default_size_poblacion": 38,
-    "default_generaciones": 100,
+    "default_generaciones": 15000,
     "default_p_mutacion": 0.1700019,
     "default_p_seleccion": 0.141,
     "bench_file": "benchmark.csv",
@@ -212,8 +212,8 @@ def algoritmo_genetico(
 def graficar_resultados(coordenadas, partidos, coalicion, titulo=None, salida=None):
     plt.figure()
     partidos_np = np.array(partidos)
-    dem = np.where(np.char.upper(partidos_np.astype(str)).astype(str).startswith("D"))[0]
-    rep = np.where(np.char.upper(partidos_np.astype(str)).astype(str).startswith("R"))[0]
+    dem = np.where(np.char.startswith(np.char.upper(partidos_np), "D"))[0]
+    rep = np.where(np.char.startswith(np.char.upper(partidos_np), "R"))[0]
     otros = [i for i in range(len(partidos)) if i not in dem.tolist() + rep.tolist()]
     plt.scatter(coordenadas[dem, 0], coordenadas[dem, 1], c="blue", s=20, label="Dem")
     plt.scatter(coordenadas[rep, 0], coordenadas[rep, 1], c="red", s=20, label="Rep")
