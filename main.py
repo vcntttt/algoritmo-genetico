@@ -11,261 +11,156 @@ import matplotlib.pyplot as plt
 try:
     import cupy as cp
 
-    usando_cupy = True
-    print(">> ¡Usando CuPy (GPU) para mejorar rendimiento!")
+    print(">> ¡Usando CuPy (GPU) para mejorar rendimiento!", flush=True)
 except ImportError:
     import numpy as cp
 
-    usando_cupy = False
-    print(">> CuPy no disponible. Usando NumPy como respaldo.")
+    print(">> CuPy no disponible. Usando NumPy como respaldo.", flush=True)
+
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-
-
-def poligono_convexo(puntos):
+def matriz_distancias_gpu(coords):
     """
-    Recibe una lista de tuplas (x, y, índice) que representan las posiciones de los candidatos y sus índices originales, 
-    ordena los puntos y aplica un algoritmo para construir el polígono convexo mínimo (casco convexo) que los encierra, 
-    devolviendo una lista de índices correspondientes a los puntos que forman el borde de ese polígono en orden. 
-    Esto sirve principalmente para graficar el borde exterior de un grupo de puntos.
+    GPU: Convierte coords a CuPy y calcula la matriz n×n de distancias euclídeas.
+    - coords: array (n×2) de coordenadas en CPU.
+    Retorna: cupy.ndarray de forma (n, n) con distancias por pares.
     """
-    puntos_ordenados = sorted(puntos, key=lambda p: (p[0], p[1]))
-
-    def producto_cruzado(o, a, b):
-        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
-
-    parte_inferior, parte_superior = [], []
-
-    for x, y, indice_x in puntos_ordenados:
-        while (
-            len(parte_inferior) >= 2
-            and producto_cruzado(parte_inferior[-2], parte_inferior[-1], (x, y)) <= 0
-        ):
-            parte_inferior.pop()
-        parte_inferior.append((x, y, indice_x))
-
-    for x, y, indice_x in reversed(puntos_ordenados):
-        while (
-            len(parte_superior) >= 2
-            and producto_cruzado(parte_superior[-2], parte_superior[-1], (x, y)) <= 0
-        ):
-            parte_superior.pop()
-        parte_superior.append((x, y, indice_x))
-
-    casco = parte_inferior[:-1] + parte_superior[:-1]
-
-    return [indice_x for _, _, indice_x in casco]
+    # Llevar coords al GPU
+    coords_gpu = cp.asarray(coords)  # shape (n,2)
+    # Broadcasting para restar cada par y calcular norma
+    diff = coords_gpu[:, None, :] - coords_gpu[None, :, :]
+    return cp.linalg.norm(diff, axis=2)
 
 
-def matriz_de_distancias(coordenadas):
+def tournament_selection(poblacion, p_sel):
     """
-    Recibe un array o lista de coordenadas (posiciones de los candidatos), las convierte a un array de CuPy (si hay GPU), 
-    calcula las diferencias entre cada par de puntos y retorna una matriz cuadrada (array) donde cada elemento [i, j] 
-    es la distancia euclidiana entre el candidato i y el j. Esto sirve para saber qué tan lejos o cerca están todos entre sí.
+    CPU: Selección por ranking (torneo aproximado).
+    - poblacion: lista de individuos.
+    - p_sel: parámetro de presión de selección (float entre 0 y 1).
+    Retorna dos individuos (padre, madre).
     """
-    coordenadas_gpu = cp.asarray(coordenadas)
-    diferencias_punto_a_punto = (
-        coordenadas_gpu[:, None, :] - coordenadas_gpu[None, :, :]
-    )
-    return cp.linalg.norm(diferencias_punto_a_punto, axis=2)
-
-
-
-
-
-def poblacion_inicial(congresistas, quorum_requerido, size_poblacion):
-    """
-    Recibe la cantidad total de congresistas (int), el tamaño del quorum requerido (int) y el tamaño de la población inicial (int); 
-    genera una lista donde cada elemento es un subconjunto aleatorio de congresistas representado por una lista de índices, 
-    cada subconjunto cumple con el tamaño de quorum. Retorna una lista de listas de enteros que serán los individuos de la población inicial en el algoritmo genético.
-    """
-    if quorum_requerido > congresistas:
-        raise ValueError(
-            "El quorum no puede ser mayor al número total de congresistas."
-        )
-    return [
-        random.sample(range(congresistas), quorum_requerido)
-        for _ in range(size_poblacion)
-    ]
-
-
-
-
-
-def torneo_de_seleccion(poblacion, distancias_fitness_poblacion, p):
-    """
-    Recibe la población (lista de individuos), la lista de fitness o distancias de cada individuo (lista de números) y una probabilidad base p (float); 
-    ordena los individuos según su fitness y aplica una selección por ranking, donde los mejores tienen más chances de ser elegidos. 
-    Retorna una copia de un individuo seleccionado aleatoriamente según esas probabilidades, para ser usado como “padre” en el algoritmo genético.
-    """
-    indices_ordenados = sorted(
-        range(len(poblacion)), key=lambda i: distancias_fitness_poblacion[i]
-    )
     n = len(poblacion)
-    probabilidades = [p * ((1 - p) ** i) for i in range(n)]
-    suma = sum(probabilidades)
-    probabilidades = [pi / suma for pi in probabilidades]
-    elegido = random.choices(indices_ordenados, weights=probabilidades, k=1)[0]
-    return poblacion[elegido].copy()
+
+    # Generar probabilidades decrecientes por ranking
+    pesos = [p_sel * ((1 - p_sel) ** i) for i in range(n)]
+    total = sum(pesos)
+    pesos = [p / total for p in pesos]
+
+    idx_padre = random.choices(range(n), weights=pesos, k=1)[0]
+    idx_madre = random.choices(range(n), weights=pesos, k=1)[0]
+    return poblacion[idx_padre], poblacion[idx_madre]
 
 
-def cruce_genetico(padre, madre, largo_cromosoma):
+def crossover(padre, madre, q):
     """
-    Recibe dos listas de enteros (padre y madre), que representan individuos (cromosomas), y un entero con el largo del cromosoma; 
-    selecciona un punto de cruce aleatorio y genera dos hijos mezclando genes de ambos padres, asegurándose de no repetir genes y de mantener el tamaño original. 
-    Retorna una tupla con dos listas de enteros, que corresponden a los dos nuevos individuos hijos listos para la siguiente generación.
+    CPU: Cruce de un solo punto.
+    - padre, madre: listas de genes (enteros).
+    - q: longitud del cromosoma.
+    Retorna dos hijos (hijo1, hijo2) sin duplicar genes.
     """
-    punto_de_cruce = random.randint(1, largo_cromosoma - 1)
-    hijo_1 = (
-        padre[:punto_de_cruce]
-        + [gen for gen in madre if gen not in padre[:punto_de_cruce]][
-            : largo_cromosoma - punto_de_cruce
-        ]
-    )
-    hijo_2 = (
-        madre[: largo_cromosoma - punto_de_cruce]
-        + [
-            gen for gen in padre if gen not in madre[: largo_cromosoma - punto_de_cruce]
-        ][:punto_de_cruce]
-    )
-    return hijo_1, hijo_2
+    corte = random.randint(1, q - 1)
+    prefijo_padre = padre[:corte]
+    prefijo_madre = madre[: q - corte]
+
+    hijo1 = prefijo_padre + [g for g in madre if g not in prefijo_padre][: q - corte]
+    hijo2 = prefijo_madre + [g for g in padre if g not in prefijo_madre][:corte]
+    return hijo1, hijo2
 
 
-
-
-def mutacion(individuo, genes_disponibles):
+def mutate(individuo, n, p_mut):
     """
-    Recibe un individuo (lista de enteros) y la cantidad total de genes disponibles (int); 
-    elige al azar una posición dentro del individuo y la reemplaza por un gen que no esté presente en él, si existe alguno disponible. 
-    Retorna la misma lista de enteros, pero con una posible mutación aplicada, para aumentar la diversidad genética en la población.
+    CPU: Mutación de un gen.
+    - individuo: lista de genes actuales.
+    - n: tamaño total del pool de genes (0..n-1).
+    - p_mut: probabilidad de mutar (float entre 0 y 1).
+    Retorna el individuo, posiblemente modificado.
     """
-    genes_fuera_del_individuo = list(set(range(genes_disponibles)) - set(individuo))
-    if genes_fuera_del_individuo:
-        individuo[random.randrange(len(individuo))] = random.choice(
-            genes_fuera_del_individuo
-        )
+    if random.random() < p_mut:
+        pos = random.randrange(len(individuo))
+        disponibles = list(set(range(n)) - set(individuo))
+        if disponibles:
+            individuo[pos] = random.choice(disponibles)
     return individuo
 
 
-
-
-
-def algoritmo_genetico(
-    coordenadas_congresistas,
-    quorum_requerido,
-    size_poblacion,
-    cantidad_generaciones,
-    probabilidad_de_mutacion,
-    probabilidad_de_seleccion,
-):
+def algoritmo_genetico(coords, q, size_poblacion, max_generaciones, p_mut, p_sel):
     """
-    Recibe las coordenadas de los congresistas (array o lista de posiciones), el tamaño del quorum requerido (int), el tamaño de la población (int),
-    la cantidad de generaciones (int), la probabilidad de mutación (float entre 0 y 1) y la probabilidad de selección (float entre 0 y 1); 
-    ejecuta un algoritmo genético buscando la coalición de congresistas más “compacta” (menor suma de distancias internas) a lo largo de varias generaciones, 
-    aplicando selección, cruce y mutación sobre la población. Retorna una tupla con la mejor coalición encontrada (lista de índices), su distancia total (float),
-    el historial de los mejores fitness por generación (lista de float), los tiempos de cómputo por generación (lista de float), y el tiempo total de ejecución (float).
+    GA con GPU/CPU bien separados y variables en Spanglish.
+    coords            : np.ndarray (n*2)
+    q                 : tamaño del cromosoma/quorum
+    size_poblacion    : tamaño de la población
+    max_generaciones  : número máximo de generaciones
+    p_mut             : probabilidad de mutación
+    p_sel             : parámetro rho para selección
     """
-    cantidad_congresistas = coordenadas_congresistas.shape[0]
-    matriz_distancias_congresistas = matriz_de_distancias(coordenadas_congresistas)
-    poblacion = poblacion_inicial(
-        cantidad_congresistas, quorum_requerido, size_poblacion
-    )
-    poblacion_gpu = cp.asarray(poblacion, dtype=cp.int32)
+    n = coords.shape[0]
 
-    coalicion_ganadora_minima, distancia_coalicion_ganadora_minima = None, float("inf")
-    (
-        mejores_distancias_generacionales,
-        tiempos_de_calculo_de_distancias_por_generacion,
-    ) = [], []
-    tiempo_inicio_algoritmo = time.time()
+    # GPU: matriz de distancias
+    D_gpu = matriz_distancias_gpu(coords)
 
-    for generacion in range(1, cantidad_generaciones + 1):
-        tiempo_inicio_calculo_distancias_generacion = time.time()
+    # CPU: población inicial
+    poblacion = [random.sample(range(n), q) for _ in range(size_poblacion)]
 
-        filas = poblacion_gpu[:, :, None]  # revisar proposito de esto
-        columnas = poblacion_gpu[:, None, :]
-        submatriz_distancias_individuos = matriz_distancias_congresistas[
-            filas, columnas
-        ]
+    best_global, best_fit = None, float("inf")
+    historial = []
+    t_start = time.time()
 
-        distancias_individuos_gpu = cp.sum(
-            cp.triu(submatriz_distancias_individuos, k=1), axis=(1, 2)
-        )
-        distancias_individuos = (
-            distancias_individuos_gpu.get()
-            if usando_cupy
-            else distancias_individuos_gpu
-        )
-
-
-        mejor_indice = (
-            cp.argmin(distancias_individuos_gpu).get()
-            if usando_cupy
-            else int(cp.argmin(distancias_individuos_gpu))  # int -> [0]
-        )
-        mejor_distancia_generacion = float(distancias_individuos[mejor_indice])
-        mejores_distancias_generacionales.append(mejor_distancia_generacion)
-
-    
-
-        if mejor_distancia_generacion < distancia_coalicion_ganadora_minima:
-            distancia_coalicion_ganadora_minima = mejor_distancia_generacion
-            coalicion_ganadora_minima = poblacion[mejor_indice].copy()
-
-        distancias_lista = distancias_individuos.tolist()
-        nueva_poblacion = [coalicion_ganadora_minima]
-        # agregar el mejor de poblacion anterior paso 9 -> paso 2
-        while len(nueva_poblacion) < size_poblacion:
-            padre = torneo_de_seleccion(
-                poblacion, distancias_lista, p=probabilidad_de_seleccion
-            )
-            madre = torneo_de_seleccion(
-                poblacion, distancias_lista, p=probabilidad_de_seleccion
-            )
-
-            individuo_1, individuo_2 = cruce_genetico(padre, madre, quorum_requerido)
-            if random.random() < probabilidad_de_mutacion:
-                individuo_1 = mutacion(individuo_1, cantidad_congresistas)
-            if random.random() < probabilidad_de_mutacion:
-                individuo_2 = mutacion(individuo_2, cantidad_congresistas)
-            nueva_poblacion.extend([individuo_1, individuo_2])
-        poblacion = nueva_poblacion[:size_poblacion]
+    for generacion in range(1, max_generaciones + 1):
+        # GPU: calcular fitness de toda la población
         poblacion_gpu = cp.asarray(poblacion, dtype=cp.int32)
-        tiempo_fin_calculo_distancias_generacion = time.time()
-        tiempo_calculo = (
-            tiempo_fin_calculo_distancias_generacion
-            - tiempo_inicio_calculo_distancias_generacion
-        )
-        tiempos_de_calculo_de_distancias_por_generacion.append(tiempo_calculo)
-        print(
-            f"Generacion {generacion}/{cantidad_generaciones}: tiempo calculo de distancias {tiempo_calculo:.6f}s, mejor fitness {mejor_distancia_generacion:.12f}"
-        )
+        sub = D_gpu[poblacion_gpu[:, :, None], poblacion_gpu[:, None, :]]
+        fit_gpu = cp.sum(cp.triu(sub, 1), axis=(1, 2))
+        fit_arr = fit_gpu.get()
 
+        # CPU: ordenar población según fitness
+        idx_sorted = np.argsort(fit_arr)
+        poblacion = [poblacion[i] for i in idx_sorted]
+        fit_arr = fit_arr[idx_sorted]
 
+        # Extraer mejor de esta generación
+        current_best = poblacion[0].copy() # cromosoma
+        current_fit = float(fit_arr[0])
+        historial.append(current_fit)
 
-    total_tiempo_algoritmo = time.time() - tiempo_inicio_algoritmo
+        # Si mejoró, actualizar best_global y mostrar
+        if current_fit < best_fit:
+            best_fit = current_fit
+            best_global = current_best.copy()
+            print(f"> Gen {generacion} → Nuevo best global: {best_fit:.6f}", flush=True)
+
+        # por si nos pillamos al optimo antes del limite de iteraciones
+        if abs(best_fit - 9686.93831) < 0.01:
+            print(f">> Óptimo encontrado en {generacion} generaciones.", flush=True)
+            break
+
+        # CPU: conservar el mejor actual
+        nueva_poblacion = [current_best]
+
+        # Generar nuevos individuos hasta llenar población
+        while len(nueva_poblacion) < size_poblacion:
+            padre, madre = tournament_selection(poblacion, p_sel)
+            hijo1, hijo2 = crossover(padre, madre, q)
+            hijo1 = mutate(hijo1, n, p_mut)
+            hijo2 = mutate(hijo2, n, p_mut)
+            nueva_poblacion.extend([hijo1, hijo2])
+
+        # Recortar exceso y asignar para la próxima generación
+        poblacion = nueva_poblacion[:size_poblacion]
+
+    total_time = time.time() - t_start
     print(
-        f">> Tiempo de demora del algoritmo genético: {total_tiempo_algoritmo:.2f}s",
+        f">> Total GA: {total_time:.2f}s — Mejor fitness: {best_fit:.6f} — Generaciones: {generacion}",
         flush=True,
     )
-    return (
-        coalicion_ganadora_minima,
-        distancia_coalicion_ganadora_minima,
-        mejores_distancias_generacionales,
-        tiempos_de_calculo_de_distancias_por_generacion,
-        total_tiempo_algoritmo,
-    )
-
-
-
+    return best_global, best_fit, historial, total_time, generacion
 
 
 def json_a_posiciones(ruta_json, indice_votacion=0):
     """
-    Recibe la ruta de un archivo JSON (string) y un índice de votación (int, opcional); 
-    abre el archivo, extrae la información de los congresistas para la votación indicada y construye un DataFrame de pandas 
+    Recibe la ruta de un archivo JSON (string) y un índice de votación (int, opcional);
+    abre el archivo, extrae la información de los congresistas para la votación indicada y construye un DataFrame de pandas
     con las columnas: id, x, y, partido y nombre. Retorna ese DataFrame, listo para ser usado como entrada en el resto del algoritmo.
     """
     with open(ruta_json, "r", encoding="utf-8") as f:
@@ -284,11 +179,29 @@ def json_a_posiciones(ruta_json, indice_votacion=0):
     return pd.DataFrame(filas)
 
 
-# --- Plotting ---
+def poligono_convexo(puntos):
+    puntos_ordenados = sorted(puntos, key=lambda p: (p[0], p[1]))
 
+    def producto_cruzado(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
 
-
-
+    parte_inferior, parte_superior = [], []
+    for x, y, idx in puntos_ordenados:
+        while (
+            len(parte_inferior) >= 2
+            and producto_cruzado(parte_inferior[-2], parte_inferior[-1], (x, y)) <= 0
+        ):
+            parte_inferior.pop()
+        parte_inferior.append((x, y, idx))
+    for x, y, idx in reversed(puntos_ordenados):
+        while (
+            len(parte_superior) >= 2
+            and producto_cruzado(parte_superior[-2], parte_superior[-1], (x, y)) <= 0
+        ):
+            parte_superior.pop()
+        parte_superior.append((x, y, idx))
+    casco = parte_inferior[:-1] + parte_superior[:-1]
+    return [i for _, _, i in casco]
 
 
 def graficar_resultados(coordenadas, partidos, coalicion, titulo=None, salida=None):
@@ -324,10 +237,6 @@ def graficar_resultados(coordenadas, partidos, coalicion, titulo=None, salida=No
     plt.show()
 
 
-
-
-
-
 def graficar_historial_costos(historial_costos, salida="historial_costos.png"):
     plt.figure()
     plt.plot(range(1, len(historial_costos) + 1), historial_costos, linewidth=1)
@@ -336,10 +245,6 @@ def graficar_historial_costos(historial_costos, salida="historial_costos.png"):
     plt.title("Mejores fitness por generación")
     plt.grid(True)
     plt.savefig(salida, dpi=300)
-
-
-
-
 
 
 def main():
@@ -412,21 +317,26 @@ def main():
     if not (0 < args.p_seleccion < 1):
         parser.error("La probabilidad de selección debe estar entre 0 y 1.")
 
-    cgm, fitness_cgm, historial_distancias, tiempos_generacion, tiempo_total_alg = (
-        algoritmo_genetico(
-            coordenadas,
-            quorum_requerido=args.quorum,
-            size_poblacion=args.size_poblacion,
-            cantidad_generaciones=args.generaciones,
-            probabilidad_de_mutacion=args.p_mutacion,
-            probabilidad_de_seleccion=args.p_seleccion,
-        )
+    (
+        cgm,
+        fitness_cgm,
+        historial_distancias,
+        tiempo_total,
+        gens,
+    ) = algoritmo_genetico(
+        coordenadas,
+        args.quorum,  # q
+        args.size_poblacion,  # pop_size
+        args.generaciones,  # gens
+        args.p_mutacion,  # p_mut
+        args.p_seleccion,  # p_sel
     )
 
     print(
-        f"CGM encontrada (quorum={args.quorum}) con fitness mínimo = {fitness_cgm:.4f}",
+        f"CGM encontrada (quorum={args.quorum}) con fitness mínimo = {fitness_cgm:.6f}",
         flush=True,
     )
+
     # agregar registro a historial general
     resumen = {
         "id": timestamp,
@@ -435,8 +345,9 @@ def main():
         "cant_generaciones": args.generaciones,
         "prob_mutacion": args.p_mutacion,
         "prob_seleccion": args.p_seleccion,
-        "tiempo_total_ejec_algoritmo": f"{tiempo_total_alg:.4f}",
-        "mejor_fitness": f"{fitness_cgm:.8f}",
+        "tiempo_total_ejec_algoritmo": f"{tiempo_total:.4f}",
+        "mejor_fitness": f"{fitness_cgm:.6f}",
+        "generaciones": gens,
     }
     bench_file = "benchmark.csv"
 
@@ -460,17 +371,13 @@ def main():
         coordenadas,
         partidos,
         cgm,
-        titulo=f"CGM encontrada (quorum={args.quorum}, best_fitness={fitness_cgm:.4f})",
+        titulo=f"CGM encontrada (quorum={args.quorum}, best_fitness={fitness_cgm:.6f})",
         salida=f"cgm/{timestamp}/poligono_convexo",
     )
+
     graficar_historial_costos(
         historial_distancias, salida=f"cgm/{timestamp}/mejores_fitness"
     )
 
 
 main()
-
-
-"""
-- La probabilidad de mutacion
-"""
