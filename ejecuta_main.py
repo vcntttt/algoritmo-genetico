@@ -2,7 +2,7 @@ import subprocess
 import sys
 import os
 
-veces = 2
+veces = 27
 
 for i in range(veces):
     print(f"\n----- Ejecución {i+1} de {veces} -----")
