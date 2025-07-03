@@ -107,13 +107,13 @@ def algoritmo_genetico(coords, q, size_poblacion, max_generaciones, p_mut, p_sel
 
     for generacion in range(1, max_generaciones + 1):
         # GPU: calcular fitness de toda la población
-        poblacion_gpu = cp.asarray(poblacion, dtype=cp.int32)
+        poblacion_gpu = cp.asarray(poblacion, dtype=cp.int32)  # CPU → GPU
         sub = D_gpu[poblacion_gpu[:, :, None], poblacion_gpu[:, None, :]]
         fit_gpu = cp.sum(cp.triu(sub, 1), axis=(1, 2))
-        fit_arr = fit_gpu.get()
+        idx_sorted = cp.argsort(fit_gpu).get()
+        fit_arr = fit_gpu.get()  # GPU → CPU
 
-        # CPU: ordenar población según fitness
-        idx_sorted = np.argsort(fit_arr)
+        # CPU: reordenar población según fitness
         poblacion = [poblacion[i] for i in idx_sorted]
         fit_arr = fit_arr[idx_sorted]
 
@@ -122,7 +122,7 @@ def algoritmo_genetico(coords, q, size_poblacion, max_generaciones, p_mut, p_sel
         current_fit = float(fit_arr[0])
         historial.append(current_fit)
 
-        # Si mejoró, actualizar best_global y mostrar
+        # Actualizar global si hay mejora
         if current_fit < best_fit:
             best_fit = current_fit
             best_global = current_best.copy()
@@ -136,7 +136,7 @@ def algoritmo_genetico(coords, q, size_poblacion, max_generaciones, p_mut, p_sel
         # CPU: conservar el mejor actual
         nueva_poblacion = [current_best]
 
-        # Generar nuevos individuos hasta llenar población
+        # llenar poblacion
         while len(nueva_poblacion) < size_poblacion:
             padre, madre = tournament_selection(poblacion, p_sel)
             hijo1, hijo2 = crossover(padre, madre, q)
