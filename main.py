@@ -102,8 +102,9 @@ def algoritmo_genetico(coords, q, size_poblacion, max_generaciones, p_mut, p_sel
     poblacion = [random.sample(range(n), q) for _ in range(size_poblacion)]
 
     best_global, best_fit = None, float("inf")
-    historial = []
+    historial = []  # Guardará tuplas (generacion, fitness)
     t_start = time.time()
+    t_last = t_start
 
     for generacion in range(1, max_generaciones + 1):
         # GPU: calcular fitness de toda la población
@@ -120,13 +121,13 @@ def algoritmo_genetico(coords, q, size_poblacion, max_generaciones, p_mut, p_sel
         # Extraer mejor de esta generación
         current_best = poblacion[0].copy()  # cromosoma
         current_fit = float(fit_arr[0])
-        historial.append(current_fit)
 
         # Actualizar global si hay mejora
         if current_fit < best_fit:
             best_fit = current_fit
             best_global = current_best.copy()
             print(f"> Gen {generacion} → Nuevo best global: {best_fit:.6f}", flush=True)
+            historial.append((generacion, best_fit))
 
         # por si nos pillamos al optimo antes del limite de iteraciones
         if abs(best_fit - 9686.93831) < 0.01:
@@ -203,16 +204,57 @@ def poligono_convexo(puntos):
 
 
 def graficar_resultados(coordenadas, partidos, coalicion, titulo=None, salida=None):
-    plt.figure()
+    plt.figure(figsize=(10, 6))
+    indices = set(range(len(coordenadas)))
+    coalicion_set = set(coalicion)
+    fuera_coalicion = list(indices - coalicion_set)
+    dentro_coalicion = list(coalicion_set)
+
     dem = [i for i, p in enumerate(partidos) if p.upper().startswith("D")]
     rep = [i for i, p in enumerate(partidos) if p.upper().startswith("R")]
-    otros = [i for i in range(len(partidos)) if i not in dem + rep]
 
-    plt.scatter(coordenadas[dem, 0], coordenadas[dem, 1], c="blue", s=20, label="Dem")
-    plt.scatter(coordenadas[rep, 0], coordenadas[rep, 1], c="red", s=20, label="Rep")
-    if otros:
+    dem_fuera = [i for i in dem if i in fuera_coalicion]
+    rep_fuera = [i for i in rep if i in fuera_coalicion]
+
+    dem_dentro = [i for i in dem if i in dentro_coalicion]
+    rep_dentro = [i for i in rep if i in dentro_coalicion]
+
+    if dem_fuera:
         plt.scatter(
-            coordenadas[otros, 0], coordenadas[otros, 1], c="gray", s=20, label="Otro"
+            coordenadas[dem_fuera, 0],
+            coordenadas[dem_fuera, 1],
+            c="blue",
+            marker="x",
+            s=12,
+            label="Demócrata fuera",
+        )
+    if rep_fuera:
+        plt.scatter(
+            coordenadas[rep_fuera, 0],
+            coordenadas[rep_fuera, 1],
+            c="red",
+            marker="x",
+            s=12,
+            label="Republicano fuera",
+        )
+
+    if dem_dentro:
+        plt.scatter(
+            coordenadas[dem_dentro, 0],
+            coordenadas[dem_dentro, 1],
+            c="blue",
+            marker="o",
+            s=8,
+            label="Demócrata coalición",
+        )
+    if rep_dentro:
+        plt.scatter(
+            coordenadas[rep_dentro, 0],
+            coordenadas[rep_dentro, 1],
+            c="red",
+            marker="o",
+            s=8,
+            label="Republicano coalición",
         )
 
     casco = poligono_convexo(
@@ -237,10 +279,17 @@ def graficar_resultados(coordenadas, partidos, coalicion, titulo=None, salida=No
 
 def graficar_historial_costos(historial_costos, salida="historial_costos.png"):
     plt.figure()
-    plt.plot(range(1, len(historial_costos) + 1), historial_costos, linewidth=1)
+    if len(historial_costos) > 0 and isinstance(historial_costos[0], tuple):
+        if len(historial_costos[0]) == 3:
+            generaciones, fitness, tiempos = zip(*historial_costos)
+        else:
+            generaciones, fitness = zip(*historial_costos)
+        plt.plot(generaciones, fitness)
+    else:
+        plt.plot(range(1, len(historial_costos) + 1), historial_costos, linewidth=1)
     plt.xlabel("Generación")
     plt.ylabel("Mejor fitness")
-    plt.title("Mejores fitness por generación")
+    plt.title("Mejores fitness por mejora")
     plt.grid(True)
     plt.savefig(salida, dpi=300)
 
