@@ -13,9 +13,7 @@ try:
 
     print(">> ¡Usando CuPy (GPU) para mejorar rendimiento!", flush=True)
 except ImportError:
-    import numpy as cp
-
-    print(">> CuPy no disponible. Usando NumPy como respaldo.", flush=True)
+    raise ImportError(">> CuPy no disponible. Comprese una GPU.")
 
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -23,8 +21,8 @@ timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 def matriz_distancias_gpu(coords):
     """
-    GPU: Convierte coords a CuPy y calcula la matriz n×n de distancias euclídeas.
-    - coords: array (n×2) de coordenadas en CPU.
+    GPU: Convierte coords a CuPy y calcula la matriz n*n de distancias euclídeas.
+    - coords: array (n*2) de coordenadas en CPU.
     Retorna: cupy.ndarray de forma (n, n) con distancias por pares.
     """
     # Llevar coords al GPU
@@ -120,7 +118,7 @@ def algoritmo_genetico(coords, q, size_poblacion, max_generaciones, p_mut, p_sel
         fit_arr = fit_arr[idx_sorted]
 
         # Extraer mejor de esta generación
-        current_best = poblacion[0].copy() # cromosoma
+        current_best = poblacion[0].copy()  # cromosoma
         current_fit = float(fit_arr[0])
         historial.append(current_fit)
 
@@ -342,12 +340,11 @@ def main():
         "id": timestamp,
         "quorum_req": args.quorum,
         "size_poblacion": args.size_poblacion,
-        "cant_generaciones": args.generaciones,
+        "cant_generaciones": gens,
         "prob_mutacion": args.p_mutacion,
         "prob_seleccion": args.p_seleccion,
         "tiempo_total_ejec_algoritmo": f"{tiempo_total:.4f}",
         "mejor_fitness": f"{fitness_cgm:.6f}",
-        "generaciones": gens,
     }
     bench_file = "benchmark.csv"
 
