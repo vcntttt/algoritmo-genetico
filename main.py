@@ -104,7 +104,6 @@ def algoritmo_genetico(coords, q, size_poblacion, max_generaciones, p_mut, p_sel
     best_global, best_fit = None, float("inf")
     historial = []  # Guardará tuplas (generacion, fitness)
     t_start = time.time()
-    t_last = t_start
 
     for generacion in range(1, max_generaciones + 1):
         # GPU: calcular fitness de toda la población
